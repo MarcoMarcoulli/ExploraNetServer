@@ -29,7 +29,7 @@ const Layout: React.FC = () => {
   const [roads, setRoads] = useState<LatLngTuple[][]>([]);
   const [totalLength, setTotalLength] = useState<number>(0);
 
-  // Gestisce il click sulla mappa per aggiungere punti
+  // Gestisce click per punti
   const MapClickHandler = () => {
     useMapEvents({
       click(e) {
@@ -42,17 +42,17 @@ const Layout: React.FC = () => {
     return null;
   };
 
-  // Inizia inserimento e reset dati
+  // Avvia inserimento
   const handleStart = () => {
-    setInserting(true);
-    setPolygonClosed(false);
     setPoints([]);
     setRoads([]);
     setTotalLength(0);
+    setPolygonClosed(false);
+    setInserting(true);
     console.log("Modalità inserimento punti abilitata");
   };
 
-  // Chiude il poligono e carica vie da Overpass
+  // Chiude poligono e recupera vie
   const handleClose = async () => {
     if (points.length < 3) {
       alert("Inserisci almeno 3 punti per chiudere un poligono.");
@@ -60,11 +60,22 @@ const Layout: React.FC = () => {
     }
     setInserting(false);
     setPolygonClosed(true);
-    console.log("Poligono chiuso, recupero vie...");
 
-    // Costruisci la stringa del poligono per Overpass (lat lon lat lon ...)
+    // Crea poligono Turf ([lon, lat])
+    const polyCoords = points.map((p) => [p[1], p[0]] as [number, number]);
+    if (
+      polyCoords[0][0] !== polyCoords[polyCoords.length - 1][0] ||
+      polyCoords[0][1] !== polyCoords[polyCoords.length - 1][1]
+    ) {
+      polyCoords.push(polyCoords[0]);
+    }
+    const polygonFeature = turf.polygon([polyCoords]);
+
+    // Overpass: tutte le vie highway, railway, waterway
     const polyString = points.map((p) => `${p[0]} ${p[1]}`).join(" ");
-    const query = `[out:json][timeout:25];way["highway"](poly:"${polyString}");out body geom;`;
+    const query = `[out:json][timeout:25];(
+  way["highway"](poly:"${polyString}");
+);out body geom;`;
 
     try {
       const response = await axios.post<OverpassResponse>(
@@ -73,35 +84,45 @@ const Layout: React.FC = () => {
         { headers: { "Content-Type": "text/plain" } }
       );
       const elements = response.data.elements;
-      // Estrai geometrie come array di lat-lng tuples
-      const fetchedRoads: LatLngTuple[][] = elements.map((el) =>
-        el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple)
-      );
-      setRoads(fetchedRoads);
 
-      // Calcola lunghezza totale in km
-      let sum = 0;
-      fetchedRoads.forEach((coords) => {
-        // turf richiede [lon, lat]
-        const line = turf.lineString(coords.map((c) => [c[1], c[0]]));
-        const len = turf.length(line, { units: "kilometers" });
-        sum += len;
+      // Segmentazione manuale e filtraggio segmenti interni
+      const clippedSegments: LatLngTuple[][] = [];
+      elements.forEach((el) => {
+        const coords = el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple);
+        for (let i = 0; i < coords.length - 1; i++) {
+          const segment: LatLngTuple[] = [coords[i], coords[i + 1]];
+          // Punto medio in [lon, lat]
+          const mid: [number, number] = [
+            (segment[0][1] + segment[1][1]) / 2,
+            (segment[0][0] + segment[1][0]) / 2,
+          ];
+          if (turf.booleanPointInPolygon(turf.point(mid), polygonFeature)) {
+            clippedSegments.push(segment);
+          }
+        }
       });
+      setRoads(clippedSegments);
+
+      // Calcola lunghezza totale (km)
+      const sum = clippedSegments.reduce((acc, seg) => {
+        const line = turf.lineString(seg.map((c) => [c[1], c[0]]));
+        return acc + turf.length(line, { units: "kilometers" });
+      }, 0);
       setTotalLength(sum);
-      console.log(`Lunghezza totale: ${sum.toFixed(2)} km`);
-    } catch (err) {
-      console.error(err);
-      alert("Errore durante il recupero delle vie da Overpass API.");
+      console.log(`Lunghezza totale clippata: ${sum.toFixed(2)} km`);
+    } catch (error) {
+      console.error(error);
+      alert("Errore recupero vie da Overpass API.");
     }
   };
 
-  // Cancella tutto
+  // Reset dati
   const handleClear = () => {
     setPoints([]);
-    setInserting(false);
-    setPolygonClosed(false);
     setRoads([]);
     setTotalLength(0);
+    setPolygonClosed(false);
+    setInserting(false);
     console.log("Dati resettati");
   };
 
@@ -112,13 +133,10 @@ const Layout: React.FC = () => {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
         />
-
         {inserting && <MapClickHandler />}
-
-        {/* Punti inseriti */}
-        {points.map((pos, idx) => (
+        {points.map((pos, i) => (
           <CircleMarker
-            key={idx}
+            key={i}
             center={pos}
             radius={6}
             pathOptions={{
@@ -129,31 +147,18 @@ const Layout: React.FC = () => {
             }}
           />
         ))}
-
-        {/* Polilinea durante l'inserimento e dopo la chiusura */}
         {points.length > 1 && <Polyline positions={points} color="blue" />}
-
-        {/* Poligono chiuso */}
         {polygonClosed && points.length > 2 && (
           <Polygon
             positions={points}
             pathOptions={{ color: "blue", fillColor: "blue", fillOpacity: 0.3 }}
           />
         )}
-
-        {/* Vie recuperate evidenziate in verde */}
         {polygonClosed &&
-          roads.map((coords, idx) => (
-            <Polyline
-              key={`road-${idx}`}
-              positions={coords}
-              color="green"
-              weight={3}
-            />
+          roads.map((seg, i) => (
+            <Polyline key={i} positions={seg} color="green" weight={3} />
           ))}
       </MapContainer>
-
-      {/* Pulsanti azioni */}
       {!inserting && !polygonClosed && (
         <button
           className="absolute top-4 right-4 z-10 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
@@ -178,8 +183,6 @@ const Layout: React.FC = () => {
           Cancella confini
         </button>
       )}
-
-      {/* Mostra lunghezza totale in basso a destra */}
       {polygonClosed && (
         <div className="absolute bottom-4 right-4 z-10 bg-white p-2 rounded shadow">
           Lunghezza totale: {totalLength.toFixed(2)} km
