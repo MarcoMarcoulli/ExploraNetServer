@@ -261,30 +261,33 @@ const Layout: React.FC = () => {
   return (
     <div className="relative w-screen h-screen z-0">
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
-        {/* Autocomplete */}
-        <div className="relative w-80">
-          <input
-            type="text"
-            placeholder="Comune, Provincia, Regione..."
-            value={searchTerm}
-            onChange={(e) => handleInputChange(e.target.value)}
-            className="w-full px-2 py-1 rounded border shadow-sm"
-          />
-          {suggestions.length > 0 && (
-            <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-auto">
-              {suggestions.map((s, i) => (
-                <li
-                  key={i}
-                  onClick={() => handleSelectSuggestion(s)}
-                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                >
-                  {s.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {/* Barra di ricerca: visibile solo se NON sto disegnando */}
+        {!inserting && !polygonClosed && (
+          <div className="relative w-80">
+            <input
+              type="text"
+              placeholder="Comune, Provincia, Regione..."
+              value={searchTerm}
+              onChange={(e) => handleInputChange(e.target.value)}
+              className="w-full px-2 py-1 rounded border shadow-sm"
+            />
+            {suggestions.length > 0 && (
+              <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-auto">
+                {suggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    onClick={() => handleSelectSuggestion(s)}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                  >
+                    {s.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
+        {/* Bottoni */}
         {!inserting && !polygonClosed && (
           <button
             onClick={handleStart}
