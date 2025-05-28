@@ -32,9 +32,12 @@ const Layout: React.FC = () => {
   const [insertingPoints, setInsertingPoints] = useState(false);
   const [closedArea, setClosedArea] = useState(false);
   const [roads, setRoads] = useState<LatLngTuple[][]>([]);
-  const [totalLength, setTotalLength] = useState(0);
+  const [trails, setTrails] = useState<LatLngTuple[][]>([]);
+  const [totalLengthRoads, setTotalLengthRoads] = useState(0);
+  const [totalLengthTrails, setTotalLengthTrails] = useState(0);
   const [area, setArea] = useState(0);
-  const [density, setDensity] = useState(0);
+  const [densityRoads, setDensityRoads] = useState(0);
+  const [densityTrails, setDensityTrails] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -64,16 +67,26 @@ const Layout: React.FC = () => {
     setArea(areaKm2);
 
     const polyString = polygonPoints.map((p) => `${p[0]} ${p[1]}`).join(" ");
-    const query = `[out:json][timeout:25];way["highway"](poly:"${polyString}");out body geom;`;
+    const queryRoads = `[out:json][timeout:25];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"](poly:"${polyString}");out body geom;`;
+    const queryTrails = `[out:json][timeout:25];way["highway"~"^(pedestrian|track|path|footway|bridleway|steps|via_ferrata)$"](poly:"${polyString}");out body geom;`;
 
     try {
-      const resp = await axios.post<OverpassResponse>(
+      const respRoads = await axios.post<OverpassResponse>(
         "https://overpass-api.de/api/interpreter",
-        query,
+        queryRoads,
         { signal: controller.signal, headers: { "Content-Type": "text/plain" } }
       );
-      const clipped: LatLngTuple[][] = [];
-      resp.data.elements.forEach((el) => {
+
+      const respTrails = await axios.post<OverpassResponse>(
+        "https://overpass-api.de/api/interpreter",
+        queryTrails,
+        { signal: controller.signal, headers: { "Content-Type": "text/plain" } }
+      );
+
+      const clippedRoads: LatLngTuple[][] = [];
+      const clippedTrails: LatLngTuple[][] = [];
+
+      respRoads.data.elements.forEach((el) => {
         const line = el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple);
         for (let i = 0; i < line.length - 1; i++) {
           const seg: LatLngTuple[] = [line[i], line[i + 1]];
@@ -82,12 +95,27 @@ const Layout: React.FC = () => {
             (seg[0][0] + seg[1][0]) / 2,
           ];
           if (turf.booleanPointInPolygon(turf.point(mid), feature)) {
-            clipped.push(seg);
+            clippedRoads.push(seg);
           }
         }
       });
-      setRoads(clipped);
-      const sumKm = clipped.reduce(
+
+      respTrails.data.elements.forEach((el) => {
+        const line = el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple);
+        for (let i = 0; i < line.length - 1; i++) {
+          const seg: LatLngTuple[] = [line[i], line[i + 1]];
+          const mid: [number, number] = [
+            (seg[0][1] + seg[1][1]) / 2,
+            (seg[0][0] + seg[1][0]) / 2,
+          ];
+          if (turf.booleanPointInPolygon(turf.point(mid), feature)) {
+            clippedTrails.push(seg);
+          }
+        }
+      });
+
+      setRoads(clippedRoads);
+      const sumKmRoads = clippedRoads.reduce(
         (acc, seg) =>
           acc +
           turf.length(turf.lineString(seg.map((c) => [c[1], c[0]])), {
@@ -95,8 +123,21 @@ const Layout: React.FC = () => {
           }),
         0
       );
-      setTotalLength(sumKm);
-      setDensity(sumKm / areaKm2);
+
+      setTrails(clippedTrails);
+      const sumKmTrails = clippedTrails.reduce(
+        (acc, seg) =>
+          acc +
+          turf.length(turf.lineString(seg.map((c) => [c[1], c[0]])), {
+            units: "kilometers",
+          }),
+        0
+      );
+
+      setTotalLengthRoads(sumKmRoads);
+      setDensityRoads(sumKmRoads / areaKm2);
+      setTotalLengthTrails(sumKmTrails);
+      setDensityTrails(sumKmTrails / areaKm2);
     } catch (err) {
       if ((err as AxiosError).name !== "CanceledError") {
         alert("Errore recupero vie da Overpass API.");
@@ -112,9 +153,12 @@ const Layout: React.FC = () => {
     suggestController.current?.abort();
     setPoints([]);
     setRoads([]);
-    setTotalLength(0);
+    setTrails([]);
+    setTotalLengthRoads(0);
+    setTotalLengthTrails(0);
     setArea(0);
-    setDensity(0);
+    setDensityRoads(0);
+    setDensityTrails(0);
     setClosedArea(false);
     setInsertingPoints(true);
   };
@@ -230,9 +274,12 @@ const Layout: React.FC = () => {
     suggestController.current?.abort();
     setPoints([]);
     setRoads([]);
-    setTotalLength(0);
+    setTrails([]);
+    setTotalLengthRoads(0);
+    setTotalLengthTrails(0);
     setArea(0);
-    setDensity(0);
+    setDensityRoads(0);
+    setDensityTrails(0);
     setClosedArea(false);
     setInsertingPoints(false);
     setSearchTerm("");
@@ -258,14 +305,21 @@ const Layout: React.FC = () => {
         center={center}
         polygonPoints={points}
         isDrawing={insertingPoints}
-        trails={roads}
+        roads={roads}
+        trails={trails}
         isLoading={isLoading}
         closedArea={closedArea}
         onMapClick={(ll) => setPoints((p) => [...p, ll])}
       />
 
       {closedArea && (
-        <ResultsPanel totalLength={totalLength} area={area} density={density} />
+        <ResultsPanel
+          area={area}
+          totalLengthTrails={totalLengthTrails}
+          totalLengthRoads={totalLengthRoads}
+          densityRoads={densityRoads}
+          densityTrails={densityTrails}
+        />
       )}
     </div>
   );

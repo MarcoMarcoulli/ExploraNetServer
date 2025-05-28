@@ -16,6 +16,7 @@ interface MapViewProps {
   center: LatLngExpression;
   polygonPoints: LatLngTuple[];
   isDrawing: boolean;
+  roads: LatLngTuple[][];
   trails: LatLngTuple[][];
   isLoading: boolean;
   onMapClick: (latlng: LatLngTuple) => void;
@@ -25,6 +26,7 @@ interface MapViewProps {
 const MapInner: React.FC<MapViewProps> = ({
   polygonPoints,
   isDrawing,
+  roads,
   trails,
   onMapClick,
   closedArea,
@@ -81,6 +83,11 @@ const MapInner: React.FC<MapViewProps> = ({
       )}
 
       {/* trails inside closed area */}
+      {closedArea &&
+        roads.map((seg, i) => (
+          <Polyline key={`tr-${i}`} positions={seg} color="red" weight={3} />
+        ))}
+
       {closedArea &&
         trails.map((seg, i) => (
           <Polyline key={`tr-${i}`} positions={seg} color="green" weight={3} />

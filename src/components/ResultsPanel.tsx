@@ -2,29 +2,49 @@
 import React from "react";
 
 interface ResultsPanelProps {
-  totalLength: number;
   area: number;
-  density: number;
+  totalLengthRoads: number;
+  totalLengthTrails: number;
+  densityRoads: number;
+  densityTrails: number;
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({
-  totalLength,
   area,
-  density,
+  totalLengthRoads,
+  totalLengthTrails,
+  densityRoads,
+  densityTrails,
 }) => (
   <div className="absolute bottom-0 right-0 z-[500] bg-white/90 border border-gray-300 shadow-xl rounded-lg p-4 text-sm text-gray-800 w-72 backdrop-blur">
     <h3 className="text-lg font-semibold text-gray-900 mb-2">Risultati</h3>
     <div className="space-y-1">
       <p>
-        <span className="font-medium">Lunghezza totale:</span>{" "}
-        {totalLength.toFixed(2)} km
-      </p>
-      <p>
         <span className="font-medium">Superficie:</span> {area.toFixed(2)} km²
       </p>
       <p>
-        <span className="font-medium">Densità:</span> {density.toFixed(2)}{" "}
-        km/km²
+        <span className="font-medium">Lunghezza totale strade:</span>{" "}
+        {totalLengthRoads.toFixed(2)} km
+      </p>
+      <p>
+        <span className="font-medium">Lunghezza totale sentieri:</span>{" "}
+        {totalLengthTrails.toFixed(2)} km
+      </p>
+      <p>
+        <span className="font-medium">Lunghezza totale :</span>{" "}
+        {(totalLengthTrails + totalLengthRoads).toFixed(2)} km
+      </p>
+      <p>
+        <span className="font-medium">Densità strade:</span>{" "}
+        {densityRoads.toFixed(2)} km/km²
+      </p>
+      <p>
+        <span className="font-medium">Densità sentieri:</span>{" "}
+        {densityTrails.toFixed(2)} km/km²
+      </p>
+      <p>
+        <span className="font-medium">Densità:</span>{" "}
+        {(densityRoads + densityTrails).toFixed(2)} km/km²
       </p>
     </div>
   </div>
