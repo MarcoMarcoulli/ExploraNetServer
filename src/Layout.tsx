@@ -7,7 +7,6 @@ import type {
 } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import axios, { AxiosError } from "axios";
-import * as turf from "@turf/turf";
 import type { Polygon as GeoJSONPolygon, MultiPolygon } from "geojson";
 
 import type { Suggestion } from "./components/SearchBar";
@@ -15,12 +14,7 @@ import Controls from "./components/Controls";
 import ResultsPanel from "./components/ResultsPanel";
 import MapView from "./components/MapView";
 
-interface OverpassElement {
-  geometry: { lat: number; lon: number }[];
-}
-interface OverpassResponse {
-  elements: OverpassElement[];
-}
+import { useAreaProcessing } from "./hooks/useAreaProcessing";
 
 interface NominatimResult {
   geojson: GeoJSONPolygon | MultiPolygon;
@@ -48,105 +42,17 @@ const Layout: React.FC = () => {
   const overpassController = useRef<AbortController | null>(null);
   const suggestController = useRef<AbortController | null>(null);
 
-  const processPolygon = async (polygonPoints: LatLngTuple[]) => {
-    // abort any previous
-    overpassController.current?.abort();
-    const controller = new AbortController();
-    overpassController.current = controller;
-
-    setIsLoading(true);
-    const coords = polygonPoints.map((p) => [p[1], p[0]] as [number, number]);
-    if (
-      coords[0][0] !== coords[coords.length - 1][0] ||
-      coords[0][1] !== coords[coords.length - 1][1]
-    ) {
-      coords.push(coords[0]);
-    }
-    const feature = turf.polygon([coords]);
-    const areaKm2 = turf.area(feature) / 1_000_000;
-    setArea(areaKm2);
-
-    const polyString = polygonPoints.map((p) => `${p[0]} ${p[1]}`).join(" ");
-    const queryRoads = `[out:json][timeout:25];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"](poly:"${polyString}");out body geom;`;
-    const queryTrails = `[out:json][timeout:25];way["highway"~"^(pedestrian|track|path|footway|bridleway|steps|via_ferrata)$"](poly:"${polyString}");out body geom;`;
-
-    try {
-      const respRoads = await axios.post<OverpassResponse>(
-        "https://overpass-api.de/api/interpreter",
-        queryRoads,
-        { signal: controller.signal, headers: { "Content-Type": "text/plain" } }
-      );
-
-      const respTrails = await axios.post<OverpassResponse>(
-        "https://overpass-api.de/api/interpreter",
-        queryTrails,
-        { signal: controller.signal, headers: { "Content-Type": "text/plain" } }
-      );
-
-      const clippedRoads: LatLngTuple[][] = [];
-      const clippedTrails: LatLngTuple[][] = [];
-
-      respRoads.data.elements.forEach((el) => {
-        const line = el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple);
-        for (let i = 0; i < line.length - 1; i++) {
-          const seg: LatLngTuple[] = [line[i], line[i + 1]];
-          const mid: [number, number] = [
-            (seg[0][1] + seg[1][1]) / 2,
-            (seg[0][0] + seg[1][0]) / 2,
-          ];
-          if (turf.booleanPointInPolygon(turf.point(mid), feature)) {
-            clippedRoads.push(seg);
-          }
-        }
-      });
-
-      respTrails.data.elements.forEach((el) => {
-        const line = el.geometry.map((g) => [g.lat, g.lon] as LatLngTuple);
-        for (let i = 0; i < line.length - 1; i++) {
-          const seg: LatLngTuple[] = [line[i], line[i + 1]];
-          const mid: [number, number] = [
-            (seg[0][1] + seg[1][1]) / 2,
-            (seg[0][0] + seg[1][0]) / 2,
-          ];
-          if (turf.booleanPointInPolygon(turf.point(mid), feature)) {
-            clippedTrails.push(seg);
-          }
-        }
-      });
-
-      setRoads(clippedRoads);
-      const sumKmRoads = clippedRoads.reduce(
-        (acc, seg) =>
-          acc +
-          turf.length(turf.lineString(seg.map((c) => [c[1], c[0]])), {
-            units: "kilometers",
-          }),
-        0
-      );
-
-      setTrails(clippedTrails);
-      const sumKmTrails = clippedTrails.reduce(
-        (acc, seg) =>
-          acc +
-          turf.length(turf.lineString(seg.map((c) => [c[1], c[0]])), {
-            units: "kilometers",
-          }),
-        0
-      );
-
-      setTotalLengthRoads(sumKmRoads);
-      setDensityRoads(sumKmRoads / areaKm2);
-      setTotalLengthTrails(sumKmTrails);
-      setDensityTrails(sumKmTrails / areaKm2);
-    } catch (err) {
-      if ((err as AxiosError).name !== "CanceledError") {
-        alert("Errore recupero vie da Overpass API.");
-      }
-    } finally {
-      setIsLoading(false);
-      overpassController.current = null;
-    }
-  };
+  const processPolygon = useAreaProcessing(
+    setRoads,
+    setTrails,
+    setTotalLengthRoads,
+    setTotalLengthTrails,
+    setDensityRoads,
+    setDensityTrails,
+    setArea,
+    setIsLoading,
+    overpassController
+  );
 
   const handleStart = () => {
     overpassController.current?.abort();
