@@ -12,7 +12,8 @@ export const useSearchSuggestions = (
   setPoints: React.Dispatch<React.SetStateAction<LatLngTuple[]>>,
   setClosedArea: React.Dispatch<React.SetStateAction<boolean>>,
   processPolygon: (points: LatLngTuple[]) => void,
-  mapRef: React.RefObject<any>
+  mapRef: React.RefObject<any>,
+  showError: (message: string) => void
 ) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -97,7 +98,7 @@ export const useSearchSuggestions = (
         }
       );
       if (!res.data.length) {
-        alert("Nessun poligono trovato.");
+        showError("Nessuna area trovata.");
         return;
       }
       const geo = res.data[0].geojson;
@@ -116,8 +117,13 @@ export const useSearchSuggestions = (
         processPolygon(polyPoints);
       }
     } catch {
-      alert("Errore recupero confini.");
+      showError("Errore recupero confini.");
     }
+  };
+
+  const clearSearch = () => {
+    setSearchTerm("");
+    setSuggestions([]);
   };
 
   return {
@@ -126,5 +132,6 @@ export const useSearchSuggestions = (
     handleInputChange,
     handleSelectSuggestion,
     suggestController,
+    clearSearch,
   };
 };

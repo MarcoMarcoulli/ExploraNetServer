@@ -2,12 +2,13 @@
 import React, { useRef, useState } from "react";
 import type { LatLngExpression, LatLngTuple } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Suggestion } from "./components/SearchBar";
 import Controls from "./components/Controls";
 import ResultsPanel from "./components/ResultsPanel";
 import MapView from "./components/MapView";
+import ErrorMessage from "./components/ErroreMessage";
 import { useAreaProcessing } from "./hooks/useAreaProcessing";
 import { useSearchSuggestions } from "./hooks/useSearchSuggestions";
+import { useAreaInputHandling } from "./hooks/useAreaInputHandling";
 
 const Layout: React.FC = () => {
   const center: LatLngExpression = [45.71, 9.7];
@@ -22,6 +23,7 @@ const Layout: React.FC = () => {
   const [densityRoads, setDensityRoads] = useState(0);
   const [densityTrails, setDensityTrails] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const mapRef = useRef<any>(null);
   const overpassController = useRef<AbortController | null>(null);
@@ -35,7 +37,8 @@ const Layout: React.FC = () => {
     setDensityTrails,
     setArea,
     setIsLoading,
-    overpassController
+    overpassController,
+    (msg) => setErrorMessage(msg)
   );
 
   const {
@@ -44,47 +47,32 @@ const Layout: React.FC = () => {
     handleInputChange,
     handleSelectSuggestion,
     suggestController,
-  } = useSearchSuggestions(setPoints, setClosedArea, processPolygon, mapRef);
+    clearSearch,
+  } = useSearchSuggestions(
+    setPoints,
+    setClosedArea,
+    processPolygon,
+    mapRef,
+    (msg) => setErrorMessage(msg)
+  );
 
-  const handleStart = () => {
-    overpassController.current?.abort();
-    suggestController.current?.abort();
-    setPoints([]);
-    setRoads([]);
-    setTrails([]);
-    setTotalLengthRoads(0);
-    setTotalLengthTrails(0);
-    setArea(0);
-    setDensityRoads(0);
-    setDensityTrails(0);
-    setClosedArea(false);
-    setInsertingPoints(true);
-  };
-
-  const handleClose = () => {
-    if (points.length < 3) {
-      alert("Inserisci almeno 3 punti.");
-      return;
-    }
-    setInsertingPoints(false);
-    setClosedArea(true);
-    processPolygon(points);
-  };
-
-  const handleClear = () => {
-    overpassController.current?.abort();
-    suggestController.current?.abort();
-    setPoints([]);
-    setRoads([]);
-    setTrails([]);
-    setTotalLengthRoads(0);
-    setTotalLengthTrails(0);
-    setArea(0);
-    setDensityRoads(0);
-    setDensityTrails(0);
-    setClosedArea(false);
-    setInsertingPoints(false);
-  };
+  const { handleStart, handleClear, handleClose } = useAreaInputHandling(
+    setPoints,
+    setRoads,
+    setTrails,
+    setTotalLengthRoads,
+    setTotalLengthTrails,
+    setArea,
+    setDensityRoads,
+    setDensityTrails,
+    setClosedArea,
+    setInsertingPoints,
+    overpassController,
+    suggestController,
+    processPolygon,
+    clearSearch,
+    (msg) => setErrorMessage(msg)
+  );
 
   return (
     <div className="relative w-screen h-screen">
@@ -97,7 +85,7 @@ const Layout: React.FC = () => {
         handleInputChange={handleInputChange}
         handleSelectSuggestion={handleSelectSuggestion}
         handleStart={handleStart}
-        handleClose={handleClose}
+        handleClose={() => handleClose(points)}
         handleClear={handleClear}
       />
 
@@ -121,6 +109,11 @@ const Layout: React.FC = () => {
           densityTrails={densityTrails}
         />
       )}
+
+      <ErrorMessage
+        message={errorMessage}
+        onClose={() => setErrorMessage("")}
+      />
     </div>
   );
 };

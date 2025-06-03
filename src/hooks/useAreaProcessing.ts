@@ -20,7 +20,8 @@ export const useAreaProcessing = (
   setDensityTrails: React.Dispatch<React.SetStateAction<number>>,
   setArea: React.Dispatch<React.SetStateAction<number>>,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
-  overpassController: React.MutableRefObject<AbortController | null>
+  overpassController: React.MutableRefObject<AbortController | null>,
+  showError: (message: string) => void
 ) => {
   const processArea = async (polygonPoints: LatLngTuple[]) => {
     overpassController.current?.abort();
@@ -103,7 +104,7 @@ export const useAreaProcessing = (
       setDensityTrails(sumKmTrails / areaKm2);
     } catch (err) {
       if ((err as AxiosError).name !== "CanceledError") {
-        alert("Errore recupero vie da Overpass API.");
+        showError("Errore recupero vie da Overpass API.");
       }
     } finally {
       setIsLoading(false);

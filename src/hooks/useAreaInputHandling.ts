@@ -1,64 +1,67 @@
-// src/hooks/useAreaInputHandling.ts
-import { useState, useCallback } from "react";
+import type { MutableRefObject } from "react";
 import type { LatLngTuple } from "leaflet";
 
-interface Params {
-  processArea: (pts: LatLngTuple[]) => void;
-  overpassCtrl: React.MutableRefObject<AbortController | null>;
-}
-
-export function useAreaInputHandling({ processArea, overpassCtrl }: Params) {
-  const [points, setPoints] = useState<LatLngTuple[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [isClosed, setIsClosed] = useState(false);
-
-  /** Inizia la modalità di disegno: reseta punti e flag */
-  const start = useCallback(() => {
-    overpassCtrl.current?.abort();
+export const useAreaInputHandling = (
+  setPoints: React.Dispatch<React.SetStateAction<LatLngTuple[]>>,
+  setRoads: React.Dispatch<React.SetStateAction<LatLngTuple[][]>>,
+  setTrails: React.Dispatch<React.SetStateAction<LatLngTuple[][]>>,
+  setTotalLengthRoads: React.Dispatch<React.SetStateAction<number>>,
+  setTotalLengthTrails: React.Dispatch<React.SetStateAction<number>>,
+  setArea: React.Dispatch<React.SetStateAction<number>>,
+  setDensityRoads: React.Dispatch<React.SetStateAction<number>>,
+  setDensityTrails: React.Dispatch<React.SetStateAction<number>>,
+  setClosedArea: React.Dispatch<React.SetStateAction<boolean>>,
+  setInsertingPoints: React.Dispatch<React.SetStateAction<boolean>>,
+  overpassController: MutableRefObject<AbortController | null>,
+  suggestController: MutableRefObject<AbortController | null>,
+  processPolygon: (points: LatLngTuple[]) => void,
+  clearSearch: () => void,
+  showError: (message: string) => void
+) => {
+  const handleStart = () => {
+    overpassController.current?.abort();
+    suggestController.current?.abort();
     setPoints([]);
-    setIsClosed(false);
-    setIsDrawing(true);
-  }, [overpassCtrl]);
+    setRoads([]);
+    setTrails([]);
+    setTotalLengthRoads(0);
+    setTotalLengthTrails(0);
+    setArea(0);
+    setDensityRoads(0);
+    setDensityTrails(0);
+    setClosedArea(false);
+    setInsertingPoints(true);
+  };
 
-  const close = useCallback(
-    (forcedPts?: LatLngTuple[]) => {
-      const pts = forcedPts ?? points;
-      if (!forcedPts && pts.length < 3) {
-        alert("Inserisci almeno 3 punti.");
-        return;
-      }
-      setIsDrawing(false);
-      setIsClosed(true);
-      setPoints(pts);
-      processArea(pts);
-    },
-    [points, processArea]
-  );
-
-  const clear = useCallback(() => {
-    overpassCtrl.current?.abort();
+  const handleClear = () => {
+    overpassController.current?.abort();
+    suggestController.current?.abort();
     setPoints([]);
-    setIsDrawing(false);
-    setIsClosed(false);
-  }, [overpassCtrl]);
+    setRoads([]);
+    setTrails([]);
+    setTotalLengthRoads(0);
+    setTotalLengthTrails(0);
+    setArea(0);
+    setDensityRoads(0);
+    setDensityTrails(0);
+    setClosedArea(false);
+    setInsertingPoints(false);
+    clearSearch();
+  };
 
-  /** Aggiunge un punto solo se siamo in disegno */
-  const addPoint = useCallback(
-    (pt: LatLngTuple) => {
-      if (isDrawing) {
-        setPoints((p) => [...p, pt]);
-      }
-    },
-    [isDrawing]
-  );
+  const handleClose = (points: LatLngTuple[]) => {
+    if (points.length < 3) {
+      showError("Inserisci almeno 3 punti.");
+      return;
+    }
+    setInsertingPoints(false);
+    setClosedArea(true);
+    processPolygon(points);
+  };
 
   return {
-    points,
-    isDrawing,
-    isClosed,
-    start,
-    close,
-    clear,
-    addPoint,
+    handleStart,
+    handleClear,
+    handleClose,
   };
-}
+};
