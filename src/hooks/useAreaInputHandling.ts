@@ -1,28 +1,24 @@
-// useAreaInputHandling.ts
+// src/hooks/useAreaInputHandling.ts
 import { useState, useCallback } from "react";
 import type { LatLngTuple } from "leaflet";
 
-export function useAreaInputHandling(
-  processArea: (pts: LatLngTuple[]) => void,
-  overpassCtrl: React.MutableRefObject<AbortController | null>
-) {
+interface Params {
+  processArea: (pts: LatLngTuple[]) => void;
+  overpassCtrl: React.MutableRefObject<AbortController | null>;
+}
+
+export function useAreaInputHandling({ processArea, overpassCtrl }: Params) {
   const [points, setPoints] = useState<LatLngTuple[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isClosed, setIsClosed] = useState(false);
 
+  /** Inizia la modalità di disegno: reseta punti e flag */
   const start = useCallback(() => {
     overpassCtrl.current?.abort();
     setPoints([]);
     setIsClosed(false);
     setIsDrawing(true);
   }, [overpassCtrl]);
-
-  const addPoint = useCallback(
-    (pt: LatLngTuple) => {
-      if (isDrawing) setPoints((p) => [...p, pt]);
-    },
-    [isDrawing]
-  );
 
   const close = useCallback(
     (forcedPts?: LatLngTuple[]) => {
@@ -46,5 +42,23 @@ export function useAreaInputHandling(
     setIsClosed(false);
   }, [overpassCtrl]);
 
-  return { points, isDrawing, isClosed, start, addPoint, close, clear };
+  /** Aggiunge un punto solo se siamo in disegno */
+  const addPoint = useCallback(
+    (pt: LatLngTuple) => {
+      if (isDrawing) {
+        setPoints((p) => [...p, pt]);
+      }
+    },
+    [isDrawing]
+  );
+
+  return {
+    points,
+    isDrawing,
+    isClosed,
+    start,
+    close,
+    clear,
+    addPoint,
+  };
 }

@@ -28,6 +28,7 @@ export const useAreaProcessing = (
     overpassController.current = controller;
 
     setIsLoading(true);
+
     const coords = polygonPoints.map((p) => [p[1], p[0]] as [number, number]);
     if (
       coords[0][0] !== coords[coords.length - 1][0] ||
@@ -41,7 +42,7 @@ export const useAreaProcessing = (
 
     const polyString = polygonPoints.map((p) => `${p[0]} ${p[1]}`).join(" ");
     const queryRoads = `[out:json][timeout:25];way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$\"](poly:\"${polyString}\");out body geom;`;
-    const queryTrails = `[out:json][timeout:25];way[\"highway\"~\"^(pedestrian|track|path|footway|bridleway|steps|via_ferrata)$\"](poly:\"${polyString}\");out body geom;`;
+    const queryTrails = `[out:json][timeout:25];way[\"highway\"~\"^(pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$\"](poly:\"${polyString}\");out body geom;`;
 
     try {
       const respRoads = await axios.post<OverpassResponse>(

@@ -74,7 +74,6 @@ const MapInner: React.FC<MapViewProps> = ({
             />
           ))}
 
-      {/* closed area polygon */}
       {closedArea && polygonPoints.length > 2 && (
         <Polygon
           positions={polygonPoints}
@@ -82,7 +81,6 @@ const MapInner: React.FC<MapViewProps> = ({
         />
       )}
 
-      {/* trails inside closed area */}
       {closedArea &&
         roads.map((seg, i) => (
           <Polyline key={`tr-${i}`} positions={seg} color="red" weight={3} />
