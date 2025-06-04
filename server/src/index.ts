@@ -26,46 +26,71 @@ app.post("/process-area", async (req: Request, res: Response) => {
     }
 
     const turfPolygon = turf.polygon([coords]);
+    const bboxPolygon = turf.bboxPolygon(turf.bbox(turfPolygon));
+
     const areaKm2 = turf.area(turfPolygon) / 1_000_000;
 
     const polyString = polygon
       .map((p: number[]) => `${p[0]} ${p[1]}`)
       .join(" ");
-    const queryRoads = `[out:json][timeout:25];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"](poly:"${polyString}");out body geom;`;
-    const queryTrails = `[out:json][timeout:25];way["highway"~"^(pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$"](poly:"${polyString}");out body geom;`;
+    const query = `
+      [out:json][timeout:180];
+      (
+        way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$"](poly:"${polyString}");
+      );
+      out body geom;
+    `.trim();
 
-    const [respRoads, respTrails] = await Promise.all([
-      axios.post("https://overpass-api.de/api/interpreter", queryRoads, {
-        headers: { "Content-Type": "text/plain" },
-      }),
-      axios.post("https://overpass-api.de/api/interpreter", queryTrails, {
-        headers: { "Content-Type": "text/plain" },
-      }),
+    const { data } = await axios.post(
+      "https://overpass-api.de/api/interpreter",
+      query,
+      { headers: { "Content-Type": "text/plain" } }
+    );
+
+    const roadTags = new Set([
+      "motorway",
+      "trunk",
+      "primary",
+      "secondary",
+      "tertiary",
+      "unclassified",
+      "residential",
     ]);
-
-    const clipElements = (elements: any[], target: [number, number][][]) => {
-      elements.forEach((el) => {
-        const line = el.geometry.map(
-          (g: any) => [g.lat, g.lon] as [number, number]
-        );
-        for (let i = 0; i < line.length - 1; i++) {
-          const seg: [number, number][] = [line[i], line[i + 1]];
-          const mid: [number, number] = [
-            (seg[0][1] + seg[1][1]) / 2,
-            (seg[0][0] + seg[1][0]) / 2,
-          ];
-          if (turf.booleanPointInPolygon(turf.point(mid), turfPolygon)) {
-            target.push(seg);
-          }
-        }
-      });
-    };
 
     const clippedRoads: [number, number][][] = [];
     const clippedTrails: [number, number][][] = [];
 
-    clipElements(respRoads.data.elements, clippedRoads);
-    clipElements(respTrails.data.elements, clippedTrails);
+    const clipElements = (el: any, target: [number, number][][]) => {
+      const line = el.geometry.map(
+        (g: any) => [g.lat, g.lon] as [number, number]
+      );
+      for (let i = 0; i < line.length - 1; i++) {
+        const seg: [number, number][] = [line[i], line[i + 1]];
+        const mid: [number, number] = [
+          (seg[0][1] + seg[1][1]) / 2,
+          (seg[0][0] + seg[1][0]) / 2,
+        ];
+
+        const midPoint = turf.point(mid);
+        // Primo filtro veloce: bounding box
+        if (!turf.booleanPointInPolygon(midPoint, bboxPolygon)) continue;
+        // Secondo filtro preciso: poligono effettivo
+        if (turf.booleanPointInPolygon(midPoint, turfPolygon)) {
+          target.push(seg);
+        }
+      }
+    };
+
+    data.elements.forEach((el: any) => {
+      const tag = el.tags?.highway;
+      if (!tag) return;
+
+      if (roadTags.has(tag)) {
+        clipElements(el, clippedRoads);
+      } else {
+        clipElements(el, clippedTrails);
+      }
+    });
 
     const sumKm = (segments: [number, number][][]) =>
       segments.reduce(
@@ -83,9 +108,9 @@ app.post("/process-area", async (req: Request, res: Response) => {
     return res.json({
       area: areaKm2,
       totalKmRoads,
+      totalKmTrails,
       roads: clippedRoads,
       trails: clippedTrails,
-      totalKmTrails,
       densityRoads: totalKmRoads / areaKm2,
       densityTrails: totalKmTrails / areaKm2,
     });
