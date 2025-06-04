@@ -33,9 +33,11 @@ async function fetchWithRetry(
     return response.data;
   } catch (err: any) {
     if (retries > 0) {
+      console.log(`[fetchWithRetry] Retry in ${backoff}ms (${retries} left)`);
       await new Promise((r) => setTimeout(r, backoff));
       return fetchWithRetry(query, retries - 1, backoff * 2);
     }
+    console.error("[fetchWithRetry] Exhausted retries");
     throw err;
   }
 }
@@ -88,14 +90,18 @@ const sumKm = (segments: [number, number][][]) =>
   }, 0);
 
 app.post("/process-area", async (req: Request, res: Response) => {
+  console.log("=== /process-area called ===");
   const { polygon } = req.body;
   if (!polygon || !Array.isArray(polygon)) {
+    console.log("Invalid polygon payload");
     return res
       .status(400)
       .json({ error: "Polygon not provided or invalid format" });
   }
 
   try {
+    console.log(`Received polygon with ${polygon.length} points`);
+
     // 1. Converti [lat, lng] → [lng, lat]
     const coords: [number, number][] = (polygon as number[][]).map((p) => {
       if (!Array.isArray(p) || p.length < 2) {
@@ -108,24 +114,32 @@ app.post("/process-area", async (req: Request, res: Response) => {
     const last = coords[coords.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
       coords.push([first[0], first[1]]);
+      console.log("Polygon was not closed; appended first point to close it");
     }
 
     // 2. Crea turfPolygon e calcola area
     const turfPolygon: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
       turf.polygon([coords]);
     const areaKm2 = turf.area(turfPolygon) / 1_000_000;
+    console.log(`Computed area: ${areaKm2.toFixed(2)} km²`);
 
     const clippedRoads: [number, number][][] = [];
     const clippedTrails: [number, number][][] = [];
 
     // 3. Ottieni bounding box
     const [minX, minY, maxX, maxY] = turf.bbox(turfPolygon);
+    console.log(
+      `Bounding box: [${minX.toFixed(4)}, ${minY.toFixed(4)}, ${maxX.toFixed(
+        4
+      )}, ${maxY.toFixed(4)}]`
+    );
 
     // Funzione per processare gli elementi Overpass
     const processElements = (
       elements: any[],
       bboxPol: Feature<Polygon | MultiPolygon, GeoJsonProperties>
     ) => {
+      console.log(`Processing ${elements.length} Overpass elements`);
       elements.forEach((el: any) => {
         const tag = el.tags?.highway;
         if (!tag) return;
@@ -138,14 +152,21 @@ app.post("/process-area", async (req: Request, res: Response) => {
     };
 
     if (areaKm2 > 60) {
-      // 4.a Area > 60 km²: suddividi in tile
+      console.log("Area > 60 km²: using tile subdivision");
       const step = 0.05;
+      let tileCount = 0;
+      let intersectCount = 0;
+
       for (let x = minX; x < maxX; x += step) {
         for (let y = minY; y < maxY; y += step) {
+          tileCount++;
           const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
             turf.bboxPolygon([x, y, x + step, y + step]);
 
-          if (!turf.booleanIntersects(tile, turfPolygon)) continue;
+          if (!turf.booleanIntersects(tile, turfPolygon)) {
+            continue;
+          }
+          intersectCount++;
 
           // Usa i vertici del tile per Overpass
           const ring = tile.geometry.coordinates[0] as [number, number][];
@@ -163,16 +184,19 @@ app.post("/process-area", async (req: Request, res: Response) => {
             if (data.elements && Array.isArray(data.elements)) {
               processElements(data.elements, tile);
             }
-          } catch {
-            // errori già gestiti in fetchWithRetry
+          } catch (err: any) {
+            console.error("Overpass tile error:", err.message);
           }
 
           // pausa per evitare rate-limit
           await new Promise((r) => setTimeout(r, 200));
         }
       }
+      console.log(
+        `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
+      );
     } else {
-      // 4.b Area ≤ 60 km²: usa il poligono intero
+      console.log("Area ≤ 60 km²: single query mode");
       const polyString = (polygon as number[][])
         .map((p) => `${p[0]} ${p[1]}`)
         .join(" ");
@@ -187,17 +211,24 @@ app.post("/process-area", async (req: Request, res: Response) => {
       try {
         const data = await fetchWithRetry(query);
         if (data.elements && Array.isArray(data.elements)) {
-          // Passa turfPolygon come bounding per il clipping
           processElements(data.elements, turfPolygon);
         }
-      } catch {
-        // errori già gestiti in fetchWithRetry
+      } catch (err: any) {
+        console.error("Overpass single query error:", err.message);
       }
     }
 
     // 5. Somma le lunghezze totali
     const totalKmRoads = sumKm(clippedRoads);
     const totalKmTrails = sumKm(clippedTrails);
+    console.log(
+      `Total segments: roads=${clippedRoads.length}, trails=${clippedTrails.length}`
+    );
+    console.log(
+      `Computed lengths: roads=${totalKmRoads.toFixed(
+        3
+      )} km, trails=${totalKmTrails.toFixed(3)} km`
+    );
 
     return res.json({
       area: areaKm2,
@@ -209,6 +240,7 @@ app.post("/process-area", async (req: Request, res: Response) => {
       densityTrails: totalKmTrails / areaKm2,
     });
   } catch (err: any) {
+    console.error("Server error:", err.message);
     return res
       .status(500)
       .json({ error: "Internal server error: " + err.message });

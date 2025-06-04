@@ -11,7 +11,8 @@ export const useAreaProcessing = (
   setDensityTrails: React.Dispatch<React.SetStateAction<number>>,
   setArea: React.Dispatch<React.SetStateAction<number>>,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
-  showError: (message: string) => void
+  showError: (message: string) => void,
+  onReady: () => void
 ) => {
   const processArea = async (polygonPoints: LatLngTuple[]) => {
     setIsLoading(true);
@@ -39,20 +40,23 @@ export const useAreaProcessing = (
         densityTrails,
       } = response.data;
 
-      setRoads(roads);
-      setTrails(trails);
       setArea(area);
       setTotalLengthRoads(totalKmRoads);
       setTotalLengthTrails(totalKmTrails);
       setDensityRoads(densityRoads);
       setDensityTrails(densityTrails);
+      onReady();
+      requestAnimationFrame(() => {
+        setRoads(roads);
+        setTrails(trails);
+        setIsLoading(false);
+      });
     } catch (err) {
       if ((err as AxiosError).name !== "CanceledError") {
         showError("Errore recupero dati dal server.");
       }
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
 
   return processArea;
