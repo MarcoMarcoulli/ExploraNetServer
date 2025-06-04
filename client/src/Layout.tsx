@@ -37,7 +37,6 @@ const Layout: React.FC = () => {
     setDensityTrails,
     setArea,
     setIsLoading,
-    overpassController,
     (msg) => setErrorMessage(msg)
   );
 
