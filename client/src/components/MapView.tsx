@@ -83,12 +83,17 @@ const MapInner: React.FC<MapViewProps> = ({
 
       {closedArea &&
         roads.map((seg, i) => (
-          <Polyline key={`tr-${i}`} positions={seg} color="red" weight={3} />
+          <Polyline key={`road-${i}`} positions={seg} color="red" weight={3} />
         ))}
 
       {closedArea &&
         trails.map((seg, i) => (
-          <Polyline key={`tr-${i}`} positions={seg} color="green" weight={3} />
+          <Polyline
+            key={`trail-${i}`}
+            positions={seg}
+            color="green"
+            weight={3}
+          />
         ))}
     </>
   );
