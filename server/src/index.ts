@@ -32,15 +32,10 @@ async function fetchWithRetry(
     );
     return response.data;
   } catch (err: any) {
-    console.error("[fetchWithRetry] Overpass request failed:", err.message);
     if (retries > 0) {
-      console.log(
-        `[fetchWithRetry] Retrying in ${backoff}ms... (${retries} left)`
-      );
       await new Promise((r) => setTimeout(r, backoff));
       return fetchWithRetry(query, retries - 1, backoff * 2);
     }
-    console.error("[fetchWithRetry] Exhausted retries");
     throw err;
   }
 }
@@ -56,8 +51,7 @@ const roadTags = new Set([
 ]);
 
 /**
- * Verifica ogni segmento: se il midpoint è dentro sia a bboxPolygon sia a turfPolygon,
- * lo aggiunge a `target`.
+ * Aggiunge al target i segmenti il cui midpoint ricade dentro turfPolygon.
  */
 const clipElements = (
   el: any,
@@ -75,23 +69,15 @@ const clipElements = (
     ];
     const midPoint = turf.point(mid);
 
-    // Log del midpoint e dei controlli
-    if (!turf.booleanPointInPolygon(midPoint, bboxPolygon)) {
-      console.log("   → midpoint fuori bbox, scartato:", mid);
-      continue;
-    }
-    if (!turf.booleanPointInPolygon(midPoint, turfPolygon)) {
-      console.log("   → midpoint fuori polygon, scartato:", mid);
-      continue;
-    }
-    // Se siamo qui, il segmento è valido
+    if (!turf.booleanPointInPolygon(midPoint, bboxPolygon)) continue;
+    if (!turf.booleanPointInPolygon(midPoint, turfPolygon)) continue;
+
     target.push(seg);
-    console.log("   → segmento aggiunto:", seg);
   }
 };
 
 /**
- * Somma in chilometri la lunghezza di tutti i segmenti.
+ * Somma in km la lunghezza di tutti i segmenti passati.
  */
 const sumKm = (segments: [number, number][][]) =>
   segments.reduce((acc, seg) => {
@@ -110,43 +96,39 @@ app.post("/process-area", async (req: Request, res: Response) => {
   }
 
   try {
-    // 1. Costruzione coords [lng, lat]
+    // 1. Converti [lat, lng] → [lng, lat]
     const coords: [number, number][] = (polygon as number[][]).map((p) => {
       if (!Array.isArray(p) || p.length < 2) {
         throw new Error("Invalid polygon coordinate: " + JSON.stringify(p));
       }
       return [p[1], p[0]];
     });
-    // Chiudo il poligono
+    // Chiudi il poligono
     const first = coords[0];
     const last = coords[coords.length - 1];
     if (first[0] !== last[0] || first[1] !== last[1]) {
       coords.push([first[0], first[1]]);
     }
 
-    // 2. Creo il turfPolygon e calcolo area
+    // 2. Crea turfPolygon e calcola area
     const turfPolygon: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
       turf.polygon([coords]);
     const areaKm2 = turf.area(turfPolygon) / 1_000_000;
-    console.log(`[DEBUG] Computed area: ${areaKm2.toFixed(2)} km²`);
 
     const clippedRoads: [number, number][][] = [];
     const clippedTrails: [number, number][][] = [];
 
-    // 3. Calcolo il bounding box
+    // 3. Ottieni bounding box
     const [minX, minY, maxX, maxY] = turf.bbox(turfPolygon);
-    console.log(`[DEBUG] BBOX: [${minX}, ${minY}, ${maxX}, ${maxY}]`);
 
-    // Funzione interna per processare gli elementi di Overpass
+    // Funzione per processare gli elementi Overpass
     const processElements = (
       elements: any[],
       bboxPol: Feature<Polygon | MultiPolygon, GeoJsonProperties>
     ) => {
-      console.log(`  → processElements called with ${elements.length} ways`);
-      elements.forEach((el: any, idx: number) => {
+      elements.forEach((el: any) => {
         const tag = el.tags?.highway;
         if (!tag) return;
-        console.log(`    - Way[${idx}] id=${el.id} highway=${tag}`);
         if (roadTags.has(tag)) {
           clipElements(el, turfPolygon, bboxPol, clippedRoads);
         } else {
@@ -155,31 +137,17 @@ app.post("/process-area", async (req: Request, res: Response) => {
       });
     };
 
-    // 4. Branching per area > 60 km²
     if (areaKm2 > 60) {
-      console.log("[DEBUG] Area > 60 km²: using tile subdivision");
-      const step = 0.05; // valore intermedio per test
-      let tileCount = 0;
-
+      // 4.a Area > 60 km²: suddividi in tile
+      const step = 0.05;
       for (let x = minX; x < maxX; x += step) {
         for (let y = minY; y < maxY; y += step) {
-          tileCount++;
           const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
             turf.bboxPolygon([x, y, x + step, y + step]);
-          console.log(
-            `Tile #${tileCount}: BBOX=[${x.toFixed(4)}, ${y.toFixed(4)}, ${(
-              x + step
-            ).toFixed(4)}, ${(y + step).toFixed(4)}]`
-          );
 
-          // 5. Controllo semplificato: se tile e poligono si intersecano
-          if (!turf.booleanIntersects(tile, turfPolygon)) {
-            console.log("  → tile non interseca poligono, skipping");
-            continue;
-          }
-          console.log("  → tile interseca poligono, procedo");
+          if (!turf.booleanIntersects(tile, turfPolygon)) continue;
 
-          // 6. Uso i vertici del tile come polyString per Overpass
+          // Usa i vertici del tile per Overpass
           const ring = tile.geometry.coordinates[0] as [number, number][];
           const polyString = ring.map((p) => `${p[1]} ${p[0]}`).join(" ");
           const query = `
@@ -190,30 +158,21 @@ app.post("/process-area", async (req: Request, res: Response) => {
             out body geom;
           `.trim();
 
-          console.log(`    → Submitting Overpass query for tile #${tileCount}`);
           try {
             const data = await fetchWithRetry(query);
-            const count = Array.isArray(data.elements)
-              ? data.elements.length
-              : 0;
-            console.log(
-              `    → Overpass returned ${count} ways for tile #${tileCount}`
-            );
             if (data.elements && Array.isArray(data.elements)) {
               processElements(data.elements, tile);
             }
-          } catch (err: any) {
-            console.error("    [ERROR] Overpass tile:", err.message);
+          } catch {
+            // errori già gestiti in fetchWithRetry
           }
 
-          // Piccola pausa per evitare rate-limit
+          // pausa per evitare rate-limit
           await new Promise((r) => setTimeout(r, 200));
         }
       }
-      console.log(`[DEBUG] Total tiles processed: ${tileCount}`);
     } else {
-      console.log("[DEBUG] Area ≤ 60 km²: single query mode");
-      // 7. Costruisco la stringa "lat lon" dall'array originale [lat, lng]
+      // 4.b Area ≤ 60 km²: usa il poligono intero
       const polyString = (polygon as number[][])
         .map((p) => `${p[0]} ${p[1]}`)
         .join(" ");
@@ -225,38 +184,20 @@ app.post("/process-area", async (req: Request, res: Response) => {
         out body geom;
       `.trim();
 
-      console.log("  → Submitting Overpass single query for entire polygon");
       try {
         const data = await fetchWithRetry(query);
-        const count = Array.isArray(data.elements) ? data.elements.length : 0;
-        console.log(`  → Overpass returned ${count} ways for single query`);
         if (data.elements && Array.isArray(data.elements)) {
-          const bboxPolygon: Feature<
-            Polygon | MultiPolygon,
-            GeoJsonProperties
-          > = turf.bboxPolygon([minX, minY, maxX, maxY]) as Feature<
-            Polygon | MultiPolygon,
-            GeoJsonProperties
-          >;
-          processElements(data.elements, bboxPolygon);
+          // Passa turfPolygon come bounding per il clipping
+          processElements(data.elements, turfPolygon);
         }
-      } catch (err: any) {
-        console.error("  [ERROR] Overpass single query:", err.message);
+      } catch {
+        // errori già gestiti in fetchWithRetry
       }
     }
 
-    // 8. Stampo il conteggio di segmenti catturati
-    console.log(`>>> clippedRoads segments: ${clippedRoads.length}`);
-    console.log(`>>> clippedTrails segments: ${clippedTrails.length}`);
-
-    // 9. Somma le lunghezze totali
+    // 5. Somma le lunghezze totali
     const totalKmRoads = sumKm(clippedRoads);
     const totalKmTrails = sumKm(clippedTrails);
-    console.log(
-      `[DEBUG] totalKmRoads=${totalKmRoads.toFixed(
-        3
-      )}, totalKmTrails=${totalKmTrails.toFixed(3)}`
-    );
 
     return res.json({
       area: areaKm2,
@@ -268,7 +209,6 @@ app.post("/process-area", async (req: Request, res: Response) => {
       densityTrails: totalKmTrails / areaKm2,
     });
   } catch (err: any) {
-    console.error("[SERVER ERROR]", err.stack || err.message || err);
     return res
       .status(500)
       .json({ error: "Internal server error: " + err.message });
