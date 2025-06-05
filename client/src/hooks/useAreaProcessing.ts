@@ -32,8 +32,8 @@ export const useAreaProcessing = (
 
       const {
         area,
-        roads,
-        trails,
+        roads = [],
+        trails = [],
         totalKmRoads,
         totalKmTrails,
         densityRoads,

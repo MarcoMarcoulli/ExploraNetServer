@@ -11,7 +11,7 @@ import type {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 /**
  * Effettua una query Overpass con retry automatico.
@@ -27,7 +27,7 @@ async function fetchWithRetry(
       query,
       {
         headers: { "Content-Type": "text/plain" },
-        timeout: 200_000,
+        timeout: 20_000,
       }
     );
     return response.data;
@@ -151,27 +151,29 @@ app.post("/process-area", async (req: Request, res: Response) => {
       });
     };
 
-    if (areaKm2 > 60) {
-      console.log("Area > 60 km²: using tile subdivision");
-      const step = 0.05;
-      let tileCount = 0;
-      let intersectCount = 0;
+    const step = 0.085;
+    let tileCount = 0;
+    let intersectCount = 0;
 
-      for (let x = minX; x < maxX; x += step) {
-        for (let y = minY; y < maxY; y += step) {
-          tileCount++;
-          const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
-            turf.bboxPolygon([x, y, x + step, y + step]);
+    console.log(
+      `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
+    );
 
-          if (!turf.booleanIntersects(tile, turfPolygon)) {
-            continue;
-          }
-          intersectCount++;
+    for (let x = minX; x < maxX; x += step) {
+      for (let y = minY; y < maxY; y += step) {
+        tileCount++;
+        const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
+          turf.bboxPolygon([x, y, x + step, y + step]);
 
-          // Usa i vertici del tile per Overpass
-          const ring = tile.geometry.coordinates[0] as [number, number][];
-          const polyString = ring.map((p) => `${p[1]} ${p[0]}`).join(" ");
-          const query = `
+        if (!turf.booleanIntersects(tile, turfPolygon)) {
+          continue;
+        }
+        intersectCount++;
+
+        // Usa i vertici del tile per Overpass
+        const ring = tile.geometry.coordinates[0] as [number, number][];
+        const polyString = ring.map((p) => `${p[1]} ${p[0]}`).join(" ");
+        const query = `
             [out:json][timeout:180];
             (
               way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$"](poly:"${polyString}");
@@ -179,42 +181,17 @@ app.post("/process-area", async (req: Request, res: Response) => {
             out body geom;
           `.trim();
 
-          try {
-            const data = await fetchWithRetry(query);
-            if (data.elements && Array.isArray(data.elements)) {
-              processElements(data.elements, tile);
-            }
-          } catch (err: any) {
-            console.error("Overpass tile error:", err.message);
+        try {
+          const data = await fetchWithRetry(query);
+          if (data.elements && Array.isArray(data.elements)) {
+            processElements(data.elements, tile);
           }
-
-          // pausa per evitare rate-limit
-          await new Promise((r) => setTimeout(r, 200));
+        } catch (err: any) {
+          console.error("Overpass tile error:", err.message);
         }
-      }
-      console.log(
-        `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
-      );
-    } else {
-      console.log("Area ≤ 60 km²: single query mode");
-      const polyString = (polygon as number[][])
-        .map((p) => `${p[0]} ${p[1]}`)
-        .join(" ");
-      const query = `
-        [out:json][timeout:180];
-        (
-          way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$"](poly:"${polyString}");
-        );
-        out body geom;
-      `.trim();
 
-      try {
-        const data = await fetchWithRetry(query);
-        if (data.elements && Array.isArray(data.elements)) {
-          processElements(data.elements, turfPolygon);
-        }
-      } catch (err: any) {
-        console.error("Overpass single query error:", err.message);
+        // pausa per evitare rate-limit
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
@@ -230,15 +207,25 @@ app.post("/process-area", async (req: Request, res: Response) => {
       )} km, trails=${totalKmTrails.toFixed(3)} km`
     );
 
-    return res.json({
-      area: areaKm2,
-      totalKmRoads,
-      totalKmTrails,
-      roads: clippedRoads,
-      trails: clippedTrails,
-      densityRoads: totalKmRoads / areaKm2,
-      densityTrails: totalKmTrails / areaKm2,
-    });
+    if (totalKmRoads + totalKmTrails < 1500) {
+      return res.json({
+        area: areaKm2,
+        totalKmRoads,
+        totalKmTrails,
+        roads: clippedRoads,
+        trails: clippedTrails,
+        densityRoads: totalKmRoads / areaKm2,
+        densityTrails: totalKmTrails / areaKm2,
+      });
+    } else {
+      return res.json({
+        area: areaKm2,
+        totalKmRoads,
+        totalKmTrails,
+        densityRoads: totalKmRoads / areaKm2,
+        densityTrails: totalKmTrails / areaKm2,
+      });
+    }
   } catch (err: any) {
     console.error("Server error:", err.message);
     return res
