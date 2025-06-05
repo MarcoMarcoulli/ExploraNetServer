@@ -1,4 +1,3 @@
-// src/Layout.tsx
 import React, { useRef, useState } from "react";
 import type { LatLngExpression, LatLngTuple } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -15,19 +14,24 @@ const Layout: React.FC = () => {
   const [points, setPoints] = useState<LatLngTuple[]>([]);
   const [insertingPoints, setInsertingPoints] = useState(false);
   const [closedArea, setClosedArea] = useState(false);
+
   const [roads, setRoads] = useState<LatLngTuple[][]>([]);
   const [trails, setTrails] = useState<LatLngTuple[][]>([]);
+
   const [totalLengthRoads, setTotalLengthRoads] = useState(0);
   const [totalLengthTrails, setTotalLengthTrails] = useState(0);
   const [area, setArea] = useState(0);
   const [densityRoads, setDensityRoads] = useState(0);
   const [densityTrails, setDensityTrails] = useState(0);
+
   const [isLoading, setIsLoading] = useState(false);
+  const [resultsReady, setResultsReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const mapRef = useRef<any>(null);
   const overpassController = useRef<AbortController | null>(null);
 
+  // useAreaProcessing ora prende in piú onReady
   const processPolygon = useAreaProcessing(
     setRoads,
     setTrails,
@@ -37,8 +41,8 @@ const Layout: React.FC = () => {
     setDensityTrails,
     setArea,
     setIsLoading,
-    overpassController,
-    (msg) => setErrorMessage(msg)
+    (msg) => setErrorMessage(msg),
+    () => setResultsReady(true) // <-- Qui dico: “appena finisco i calcoli, resultsReady = true”
   );
 
   const {
@@ -95,20 +99,27 @@ const Layout: React.FC = () => {
         isDrawing={insertingPoints}
         roads={roads}
         trails={trails}
-        isLoading={isLoading}
+        isLoading={isLoading} // (opzionale) per mostrare uno spinner sulla mappa
         closedArea={closedArea}
         onMapClick={(ll) => setPoints((p) => [...p, ll])}
       />
 
-      {closedArea && (
-        <ResultsPanel
-          area={area}
-          totalLengthTrails={totalLengthTrails}
-          totalLengthRoads={totalLengthRoads}
-          densityRoads={densityRoads}
-          densityTrails={densityTrails}
-        />
-      )}
+      {closedArea &&
+        (isLoading ? (
+          <div className="absolute top-4 right-4 bg-white p-2 rounded shadow">
+            Calcolo in corso…
+          </div>
+        ) : (
+          resultsReady && (
+            <ResultsPanel
+              area={area}
+              totalLengthTrails={totalLengthTrails}
+              totalLengthRoads={totalLengthRoads}
+              densityRoads={densityRoads}
+              densityTrails={densityTrails}
+            />
+          )
+        ))}
 
       <ErrorMessage
         message={errorMessage}
