@@ -155,10 +155,6 @@ app.post("/process-area", async (req: Request, res: Response) => {
     let tileCount = 0;
     let intersectCount = 0;
 
-    console.log(
-      `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
-    );
-
     for (let x = minX; x < maxX; x += step) {
       for (let y = minY; y < maxY; y += step) {
         tileCount++;
@@ -194,6 +190,9 @@ app.post("/process-area", async (req: Request, res: Response) => {
         await new Promise((r) => setTimeout(r, 200));
       }
     }
+    console.log(
+      `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
+    );
 
     // 5. Somma le lunghezze totali
     const totalKmRoads = sumKm(clippedRoads);
