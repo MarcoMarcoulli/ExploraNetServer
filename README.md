@@ -45,15 +45,10 @@ Avviare il server
 Da dentro la cartella server:
 
 ```bash
-Copy code
 npm start
 ```
-Questo avvia:
+Questo avvia: ts-node src/index.ts
 
-```bash
-Copy code
-ts-node src/index.ts
-```
 Il server sarà in ascolto sulla porta 3001.
 
 Avviare il client
