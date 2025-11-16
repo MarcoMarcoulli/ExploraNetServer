@@ -27,7 +27,7 @@ async function fetchWithRetry(
       query,
       {
         headers: { "Content-Type": "text/plain" },
-        timeout: 5_000,
+        timeout: 20_000,
       }
     );
     return response.data;
@@ -37,7 +37,7 @@ async function fetchWithRetry(
       await new Promise((r) => setTimeout(r, backoff));
       return fetchWithRetry(query, retries - 1, backoff * 2);
     }
-    console.error("[fetchWithRetry] Exhausted retries:", err.message);
+    console.error("[fetchWithRetry] Exhausted retries");
     throw err;
   }
 }
@@ -62,12 +62,12 @@ const clipElements = (
   target: [number, number][][]
 ) => {
   if (!el.geometry || !Array.isArray(el.geometry)) return;
-  const line = el.geometry.map((g: any) => [g.lat, g.lon] as [number, number]);
+  const line = el.geometry.map((g: any) => [g.lon, g.lat] as [number, number]);
   for (let i = 0; i < line.length - 1; i++) {
     const seg: [number, number][] = [line[i], line[i + 1]];
-    const mid: [number, number] = [
-      (seg[0][1] + seg[1][1]) / 2,
-      (seg[0][0] + seg[1][0]) / 2,
+    const mid = [
+      (seg[0][0] + seg[1][0]) / 2, // lon
+      (seg[0][1] + seg[1][1]) / 2, // lat
     ];
     const midPoint = turf.point(mid);
 
@@ -83,22 +83,11 @@ const clipElements = (
  */
 const sumKm = (segments: [number, number][][]) =>
   segments.reduce((acc, seg) => {
-    const length = turf.length(turf.lineString(seg.map((c) => [c[1], c[0]])), {
+    const length = turf.length(turf.lineString(seg), {
       units: "kilometers",
     });
     return acc + length;
   }, 0);
-
-/**
- * Helper per suddividere un array in chunk di dimensione n.
- */
-function chunkArray<T>(arr: T[], n: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) {
-    chunks.push(arr.slice(i, i + n));
-  }
-  return chunks;
-}
 
 app.post("/process-area", async (req: Request, res: Response) => {
   console.log("=== /process-area called ===");
@@ -145,22 +134,7 @@ app.post("/process-area", async (req: Request, res: Response) => {
       )}, ${maxY.toFixed(4)}]`
     );
 
-    // 4. Raccogliere tutti i tile che intersecano il poligono (ma non ancora processare)
-    const step = 0.085;
-    const tilesToProcess: Feature<Polygon | MultiPolygon, GeoJsonProperties>[] =
-      [];
-    for (let x = minX; x < maxX; x += step) {
-      for (let y = minY; y < maxY; y += step) {
-        const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
-          turf.bboxPolygon([x, y, x + step, y + step]);
-        if (turf.booleanIntersects(tile, turfPolygon)) {
-          tilesToProcess.push(tile);
-        }
-      }
-    }
-    console.log(`Trovati ${tilesToProcess.length} tile da processare`);
-
-    // 5. Funzione per processare gli elementi Overpass in base ai tag
+    // Funzione per processare gli elementi Overpass
     const processElements = (
       elements: any[],
       bboxPol: Feature<Polygon | MultiPolygon, GeoJsonProperties>
@@ -177,81 +151,62 @@ app.post("/process-area", async (req: Request, res: Response) => {
       });
     };
 
-    // 6. Funzione per inviare la query Overpass per un singolo tile e processare la risposta
-    async function processOneTile(
-      tile: Feature<Polygon | MultiPolygon, GeoJsonProperties>,
-      index: number
-    ) {
-      const ring = tile.geometry.coordinates[0] as [number, number][];
-      const polyString = ring.map((p) => `${p[1]} ${p[0]}`).join(" ");
+    const step = 0.085;
+    let tileCount = 0;
+    let intersectCount = 0;
 
-      const query = `
-        [out:json][timeout:180];
-        (
-          way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway)$"](poly:"${polyString}");
-        );
-        out body geom;
-      `.trim();
+    console.log(
+      `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
+    );
 
-      try {
-        const data = await fetchWithRetry(query);
+    for (let x = minX; x < maxX; x += step) {
+      for (let y = minY; y < maxY; y += step) {
+        tileCount++;
+        const tile: Feature<Polygon | MultiPolygon, GeoJsonProperties> =
+          turf.bboxPolygon([x, y, x + step, y + step]);
 
-        // Se la risposta non contiene elements o è vuota
-        if (
-          !data.elements ||
-          !Array.isArray(data.elements) ||
-          data.elements.length === 0
-        ) {
-          console.warn(
-            `[processOneTile] Tile #${index} ha restituito 0 elementi Overpass`
-          );
-        } else {
-          processElements(data.elements, tile);
+        if (!turf.booleanIntersects(tile, turfPolygon)) {
+          continue;
         }
-      } catch (err: any) {
-        console.error(
-          `[processOneTile] Errore Overpass tile #${index}:`,
-          err.message
-        );
+        intersectCount++;
+
+        // Usa i vertici del tile per Overpass
+        const ring = tile.geometry.coordinates[0] as [number, number][];
+        const polyString = ring.map((p) => `${p[1]} ${p[0]}`).join(" ");
+        const query = `
+            [out:json][timeout:180];
+            (
+              way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|pedestrian|track|path|footway|bridleway|steps|via_ferrata|cycleway|living_street|motorway_link|trunk_link|service|road)$"](poly:"${polyString}");
+            );
+            out body geom;
+          `.trim();
+
+        try {
+          const data = await fetchWithRetry(query);
+          if (data.elements && Array.isArray(data.elements)) {
+            processElements(data.elements, tile);
+          }
+        } catch (err: any) {
+          console.error("Overpass tile error:", err.message);
+        }
+
+        // pausa per evitare rate-limit
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
-    // 7. Parallelizzare le richieste per batch di tile
-    const CONCURRENCY = 500;
-    const delayBetweenBatches = 5; // ms
-
-    const tileBatches = chunkArray(tilesToProcess, CONCURRENCY);
-    console.log(
-      `Processo i tile in ${tileBatches.length} batch di max ${CONCURRENCY}`
-    );
-
-    let tileIndex = 0;
-    for (let batchIndex = 0; batchIndex < tileBatches.length; batchIndex++) {
-      const batch = tileBatches[batchIndex];
-      // Lancia in parallelo tutte le promise per i tile nel batch
-      const promises = batch.map((tile) => processOneTile(tile, tileIndex++));
-      await Promise.all(promises);
-
-      // Breve pausa tra un batch e l'altro
-      if (batchIndex < tileBatches.length - 1) {
-        await new Promise((r) => setTimeout(r, delayBetweenBatches));
-      }
-    }
-
-    console.log(
-      `Tutti i tile processati. Roads segments: ${clippedRoads.length}, Trails segments: ${clippedTrails.length}`
-    );
-
-    // 8. Somma le lunghezze totali
+    // 5. Somma le lunghezze totali
     const totalKmRoads = sumKm(clippedRoads);
     const totalKmTrails = sumKm(clippedTrails);
+    console.log(
+      `Total segments: roads=${clippedRoads.length}, trails=${clippedTrails.length}`
+    );
     console.log(
       `Computed lengths: roads=${totalKmRoads.toFixed(
         3
       )} km, trails=${totalKmTrails.toFixed(3)} km`
     );
 
-    // 9. Risposta JSON
     if (totalKmRoads + totalKmTrails < 1500) {
       return res.json({
         area: areaKm2,

@@ -16,11 +16,21 @@ interface MapViewProps {
   center: LatLngExpression;
   polygonPoints: LatLngTuple[];
   isDrawing: boolean;
-  roads: LatLngTuple[][];
-  trails: LatLngTuple[][];
+
+  // ⚠️ Importante: i segmenti NON sono LatLngTuple
+  // arrivano dal backend → [lon, lat]
+  roads: [number, number][][];
+  trails: [number, number][][];
+
   isLoading: boolean;
   onMapClick: (latlng: LatLngTuple) => void;
   closedArea: boolean;
+}
+
+// Conversione backend → Leaflet
+// Da [lon, lat] a [lat, lon]
+function toLeafletSeg(seg: [number, number][]): LatLngTuple[] {
+  return seg.map(([lon, lat]) => [lat, lon]) as LatLngTuple[];
 }
 
 const MapInner: React.FC<MapViewProps> = ({
@@ -33,7 +43,7 @@ const MapInner: React.FC<MapViewProps> = ({
 }) => {
   const map = useMap();
 
-  // handle clicks when drawing
+  // Gestione click durante il disegno
   useMapEvents({
     click(e) {
       if (isDrawing) {
@@ -42,7 +52,7 @@ const MapInner: React.FC<MapViewProps> = ({
     },
   });
 
-  // fly to bounds when area is closed
+  // Al chiudersi dell'area, fai zoom automatico
   useEffect(() => {
     if (closedArea && polygonPoints.length > 0) {
       map.flyToBounds(polygonPoints, { padding: [20, 20] });
@@ -51,7 +61,7 @@ const MapInner: React.FC<MapViewProps> = ({
 
   return (
     <>
-      {/* drawing markers */}
+      {/* Marker di disegno */}
       {isDrawing &&
         polygonPoints.map((pos, i) => (
           <CircleMarker
@@ -62,7 +72,7 @@ const MapInner: React.FC<MapViewProps> = ({
           />
         ))}
 
-      {/* drawing polyline preview */}
+      {/* Anteprima linee durante il disegno */}
       {isDrawing &&
         polygonPoints
           .slice(0, -1)
@@ -74,6 +84,7 @@ const MapInner: React.FC<MapViewProps> = ({
             />
           ))}
 
+      {/* Poligono finale */}
       {closedArea && polygonPoints.length > 2 && (
         <Polygon
           positions={polygonPoints}
@@ -81,16 +92,23 @@ const MapInner: React.FC<MapViewProps> = ({
         />
       )}
 
+      {/* 🚀 Segnali strade (convertiti per Leaflet) */}
       {closedArea &&
         roads.map((seg, i) => (
-          <Polyline key={`road-${i}`} positions={seg} color="red" weight={3} />
+          <Polyline
+            key={`road-${i}`}
+            positions={toLeafletSeg(seg)}
+            color="red"
+            weight={3}
+          />
         ))}
 
+      {/* 🚀 Segnali sentieri (convertiti per Leaflet) */}
       {closedArea &&
         trails.map((seg, i) => (
           <Polyline
             key={`trail-${i}`}
-            positions={seg}
+            positions={toLeafletSeg(seg)}
             color="green"
             weight={3}
           />
@@ -110,7 +128,7 @@ const MapView: React.FC<MapViewProps> = (props) => {
         <MapInner {...props} />
       </MapContainer>
 
-      {/* loading overlay */}
+      {/* Overlay di caricamento */}
       {props.isLoading && <LoadingState />}
     </div>
   );
