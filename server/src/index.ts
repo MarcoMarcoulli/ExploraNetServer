@@ -196,7 +196,7 @@ app.post("/process-area", async (req: Request, res: Response) => {
       try {
         const data = await fetchWithRetry(query);
 
-        // Se la risposta non contiene elements o è vuota, logghiamo un warning.
+        // Se la risposta non contiene elements o è vuota
         if (
           !data.elements ||
           !Array.isArray(data.elements) ||
