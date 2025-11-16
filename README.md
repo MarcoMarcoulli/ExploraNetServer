@@ -13,8 +13,7 @@ In seguito si spiega come clonare il repository, installare le dipendenze e avvi
 
 Assicurati di avere installato:
 
-- [Node.js](https://nodejs.org/) (versione **18+** consigliata)
-- **npm** (incluso con Node)
+- [Node.js](https://nodejs.org/) 
 - **Git**
 
 ---
@@ -28,7 +27,6 @@ cd ExploraNetServer
 ## 2. Installazione delle dipendenze
 Backend (server)
 ```bash
-Copy code
 cd server
 npm install
 ```
@@ -36,7 +34,6 @@ Frontend (client)
 Apri una nuova tab del terminale oppure torna alla root del progetto:
 
 ```bash
-Copy code
 cd ../client
 npm install
 ```
@@ -55,7 +52,6 @@ Avviare il client
 Da dentro la cartella client:
 
 ```bash
-Copy code
 npm run dev
 ```
-Il client verrà avviato in modalità sviluppo
+Il client verrà avviato in modalità sviluppo.
