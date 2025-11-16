@@ -1,54 +1,69 @@
-# React + TypeScript + Vite
+ExploraNet
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ExploraNet è un progetto composto da due parti distinte:
 
-Currently, two official plugins are available:
+Server – Backend in Node.js/TypeScript (ts-node)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Client – Frontend sviluppato con Vite
 
-## Expanding the ESLint configuration
+Questo documento spiega come clonare il repository, installare le dipendenze e avviare entrambe le parti del progetto.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+📦 Prerequisiti
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+Assicurati di avere installato:
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Node.js (versione 18+ consigliata)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+npm (incluso con Node)
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+Git
+
+Puoi verificare con:
+
+node -v
+npm -v
+
+📥 1. Clonare il repository
+git clone https://github.com/MarcoMarcoulli/ExploraNetServer.git
+cd ExploraNetServer
+
+🛠️ 2. Installazione delle dipendenze
+Backend (server)
+cd server
+npm install
+
+Frontend (client)
+
+Apri una nuova tab del terminale oppure torna alla root:
+
+cd ../client
+npm install
+
+▶️ 3. Avviare il progetto
+Avviare il server
+
+Da dentro la cartella server:
+
+npm start
+
+
+Questo avvia:
+
+ts-node src/index.ts
+
+
+Il server sarà in ascolto sulla porta configurata nel progetto (es. 3000 o 5000 a seconda del codice).
+
+Avviare il client
+
+Da dentro la cartella client:
+
+npm run dev
+
+
+Vite mostrerà l'indirizzo locale, tipicamente:
+
+Local:   http://localhost:5173/
+
+
+Aprilo nel browser.
