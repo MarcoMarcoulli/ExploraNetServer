@@ -2,6 +2,8 @@
 import axios, { AxiosError } from "axios";
 import type { LatLngTuple } from "leaflet";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 export const useAreaProcessing = (
   setRoads: React.Dispatch<React.SetStateAction<LatLngTuple[][]>>,
   setTrails: React.Dispatch<React.SetStateAction<LatLngTuple[][]>>,
@@ -26,7 +28,7 @@ export const useAreaProcessing = (
     }
 
     try {
-      const response = await axios.post("http://localhost:3001/process-area", {
+      const response = await axios.post(`${API_BASE_URL}/process-area`, {
         polygon: coords.map((c) => [c[1], c[0]]),
       });
 

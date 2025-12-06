@@ -11,6 +11,8 @@ import type {
 
 const app = express();
 app.use(cors());
+app.options("*", cors());
+
 app.use(express.json({ limit: "50mb" }));
 
 /**
@@ -19,11 +21,11 @@ app.use(express.json({ limit: "50mb" }));
 async function fetchWithRetry(
   query: string,
   retries = 3,
-  backoff = 500
+  backoff = 1000
 ): Promise<any> {
   try {
     const response = await axios.post(
-      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass.private.coffee/api/interpreter",
       query,
       {
         headers: { "Content-Type": "text/plain" },
@@ -151,13 +153,10 @@ app.post("/process-area", async (req: Request, res: Response) => {
       });
     };
 
-    const step = 0.085;
+    const step = 0.2;
     let tileCount = 0;
     let intersectCount = 0;
-
-    console.log(
-      `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}`
-    );
+    let failedTiles = 0;
 
     for (let x = minX; x < maxX; x += step) {
       for (let y = minY; y < maxY; y += step) {
@@ -187,17 +186,19 @@ app.post("/process-area", async (req: Request, res: Response) => {
             processElements(data.elements, tile);
           }
         } catch (err: any) {
+          failedTiles++;
           console.error("Overpass tile error:", err.message);
         }
 
         // pausa per evitare rate-limit
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 1200));
       }
     }
 
     // 5. Somma le lunghezze totali
     const totalKmRoads = sumKm(clippedRoads);
     const totalKmTrails = sumKm(clippedTrails);
+
     console.log(
       `Total segments: roads=${clippedRoads.length}, trails=${clippedTrails.length}`
     );
@@ -205,6 +206,9 @@ app.post("/process-area", async (req: Request, res: Response) => {
       `Computed lengths: roads=${totalKmRoads.toFixed(
         3
       )} km, trails=${totalKmTrails.toFixed(3)} km`
+    );
+    console.log(
+    `Tiles generated: ${tileCount}, Tiles intersecting polygon: ${intersectCount}, Failed tiles: ${failedTiles}`
     );
 
     if (totalKmRoads + totalKmTrails < 1500) {

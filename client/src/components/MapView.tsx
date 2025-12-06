@@ -17,7 +17,6 @@ interface MapViewProps {
   polygonPoints: LatLngTuple[];
   isDrawing: boolean;
 
-  // ⚠️ Importante: i segmenti NON sono LatLngTuple
   // arrivano dal backend → [lon, lat]
   roads: [number, number][][];
   trails: [number, number][][];
