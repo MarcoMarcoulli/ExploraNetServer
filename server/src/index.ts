@@ -153,7 +153,7 @@ app.post("/process-area", async (req: Request, res: Response) => {
       });
     };
 
-    const step = 0.2;
+    const step = 0.12;
     let tileCount = 0;
     let intersectCount = 0;
     let failedTiles = 0;
@@ -191,7 +191,7 @@ app.post("/process-area", async (req: Request, res: Response) => {
         }
 
         // pausa per evitare rate-limit
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
