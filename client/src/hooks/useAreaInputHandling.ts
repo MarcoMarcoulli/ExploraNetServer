@@ -12,15 +12,19 @@ export const useAreaInputHandling = (
   setDensityTrails: React.Dispatch<React.SetStateAction<number>>,
   setClosedArea: React.Dispatch<React.SetStateAction<boolean>>,
   setInsertingPoints: React.Dispatch<React.SetStateAction<boolean>>,
-  overpassController: MutableRefObject<AbortController | null>,
+  
+  // MODIFICA QUI: Rimuovi overpassController e aggiungi stopProcessing
+  stopProcessing: () => void,
+  
   suggestController: MutableRefObject<AbortController | null>,
   processPolygon: (points: LatLngTuple[]) => void,
   clearSearch: () => void,
   showError: (message: string) => void
 ) => {
+  
   const handleStart = () => {
-    overpassController.current?.abort();
-    suggestController.current?.abort();
+    stopProcessing(); // Ferma il server correttamente
+    suggestController.current?.abort(); // Ferma i suggerimenti
     setPoints([]);
     setRoads([]);
     setTrails([]);
@@ -34,7 +38,7 @@ export const useAreaInputHandling = (
   };
 
   const handleClear = () => {
-    overpassController.current?.abort();
+    stopProcessing(); // Ferma il server correttamente
     suggestController.current?.abort();
     setPoints([]);
     setRoads([]);

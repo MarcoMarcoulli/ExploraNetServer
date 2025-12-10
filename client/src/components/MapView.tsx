@@ -1,9 +1,7 @@
-// src/components/MapView.tsx
-import React, { useEffect } from "react";
+import React, { forwardRef } from "react";
 import {
   MapContainer,
   TileLayer,
-  useMap,
   useMapEvents,
   Polyline,
   Polygon,
@@ -16,20 +14,22 @@ interface MapViewProps {
   center: LatLngExpression;
   polygonPoints: LatLngTuple[];
   isDrawing: boolean;
-
-  // arrivano dal backend → [lon, lat]
-  roads: [number, number][][];
-  trails: [number, number][][];
+  
+  // 2. MODIFICA QUI: Usa LatLngExpression[][] invece di [number, number][][]
+  // Questo accetterà sia i dati dal backend che i tipi di Leaflet senza errori.
+  roads: LatLngExpression[][];
+  trails: LatLngExpression[][];
 
   isLoading: boolean;
   onMapClick: (latlng: LatLngTuple) => void;
   closedArea: boolean;
 }
 
-// Conversione backend → Leaflet
-// Da [lon, lat] a [lat, lon]
-function toLeafletSeg(seg: [number, number][]): LatLngTuple[] {
-  return seg.map(([lon, lat]) => [lat, lon]) as LatLngTuple[];
+// Helper per girare le coordinate [lon, lat] -> [lat, lon]
+function toLeaflet(segments: LatLngExpression[][]): LatLngExpression[][] {
+  return segments.map(line => 
+    (line as number[][]).map(pt => [pt[1], pt[0]] as LatLngTuple)
+  );
 }
 
 const MapInner: React.FC<MapViewProps> = ({
@@ -40,9 +40,7 @@ const MapInner: React.FC<MapViewProps> = ({
   onMapClick,
   closedArea,
 }) => {
-  const map = useMap();
-
-  // Gestione click durante il disegno
+  
   useMapEvents({
     click(e) {
       if (isDrawing) {
@@ -51,16 +49,11 @@ const MapInner: React.FC<MapViewProps> = ({
     },
   });
 
-  // Al chiudersi dell'area, fai zoom automatico
-  useEffect(() => {
-    if (closedArea && polygonPoints.length > 0) {
-      map.flyToBounds(polygonPoints, { padding: [20, 20] });
-    }
-  }, [closedArea, polygonPoints, map]);
+  const renderRoads = toLeaflet(roads);
+  const renderTrails = toLeaflet(trails);
 
   return (
     <>
-      {/* Marker di disegno */}
       {isDrawing &&
         polygonPoints.map((pos, i) => (
           <CircleMarker
@@ -71,11 +64,8 @@ const MapInner: React.FC<MapViewProps> = ({
           />
         ))}
 
-      {/* Anteprima linee durante il disegno */}
       {isDrawing &&
-        polygonPoints
-          .slice(0, -1)
-          .map((_, i) => (
+        polygonPoints.slice(0, -1).map((_, i) => (
             <Polyline
               key={`ln-${i}`}
               positions={[polygonPoints[i], polygonPoints[i + 1]]}
@@ -83,7 +73,6 @@ const MapInner: React.FC<MapViewProps> = ({
             />
           ))}
 
-      {/* Poligono finale */}
       {closedArea && polygonPoints.length > 2 && (
         <Polygon
           positions={polygonPoints}
@@ -91,46 +80,37 @@ const MapInner: React.FC<MapViewProps> = ({
         />
       )}
 
-      {/* 🚀 Segnali strade (convertiti per Leaflet) */}
       {closedArea &&
-        roads.map((seg, i) => (
-          <Polyline
-            key={`road-${i}`}
-            positions={toLeafletSeg(seg)}
-            color="red"
-            weight={3}
-          />
+        renderRoads.map((seg, i) => (
+          <Polyline key={`r-${i}`} positions={seg} color="red" weight={3} />
         ))}
 
-      {/* 🚀 Segnali sentieri (convertiti per Leaflet) */}
       {closedArea &&
-        trails.map((seg, i) => (
-          <Polyline
-            key={`trail-${i}`}
-            positions={toLeafletSeg(seg)}
-            color="green"
-            weight={3}
-          />
+        renderTrails.map((seg, i) => (
+          <Polyline key={`t-${i}`} positions={seg} color="green" weight={3} dashArray="5, 5" />
         ))}
     </>
   );
 };
 
-const MapView: React.FC<MapViewProps> = (props) => {
+const MapView = forwardRef<any, MapViewProps>((props, ref) => {
   return (
     <div className="relative w-full h-full">
-      <MapContainer center={props.center} zoom={12} className="w-full h-full">
+      <MapContainer 
+        center={props.center} 
+        zoom={12} 
+        className="w-full h-full"
+        ref={ref}
+      >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="© OpenStreetMap contributors"
         />
         <MapInner {...props} />
       </MapContainer>
-
-      {/* Overlay di caricamento */}
       {props.isLoading && <LoadingState />}
     </div>
   );
-};
+});
 
 export default MapView;
